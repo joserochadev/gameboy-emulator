@@ -3,7 +3,6 @@ use std::ptr::null_mut;
 
 use crate::bus::Bus;
 
-
 pub enum Flags {
   Z,
   N,
@@ -12,17 +11,17 @@ pub enum Flags {
 }
 
 #[derive(Default, Debug)]
-struct Register {
-  a: u8,
-  b: u8,
-  c: u8,
-  d: u8,
-  e: u8,
-  f: u8,
-  h: u8,
-  l: u8,
-  pc: u16,
-  sp: u16,
+pub struct Register {
+  pub a: u8,
+  pub b: u8,
+  pub c: u8,
+  pub d: u8,
+  pub e: u8,
+  pub f: u8,
+  pub h: u8,
+  pub l: u8,
+  pub pc: u16,
+  pub sp: u16,
 }
 
 impl Register {
@@ -67,26 +66,24 @@ impl Register {
 
 #[derive(Debug)]
 pub struct Cpu {
-  reg: Register,
-  bus: *mut Bus
+  pub reg: Register,
+  bus: *mut Bus,
 }
 
 impl Cpu {
   pub fn new() -> Cpu {
     Cpu {
       reg: Register::new(),
-      bus: null_mut()
+      bus: null_mut(),
     }
   }
 
-  pub fn bus_connect(&mut self, bus: *mut Bus){
+  pub fn bus_connect(&mut self, bus: *mut Bus) {
     self.bus = bus
   }
 
   pub fn read(&mut self, addr: u16) -> u8 {
-    unsafe {
-      (*self.bus).read(addr)
-    }
+    unsafe { (*self.bus).read(addr) }
   }
 
   pub fn write(&mut self, addr: u16, data: u8) {
@@ -110,7 +107,7 @@ impl Cpu {
     println!("Flag N: {}", self.get_flag(Flags::N));
     println!("Flag H: {}", self.get_flag(Flags::H));
     println!("Flag C: {}", self.get_flag(Flags::C));
-    println!("{}","=".repeat(40));
+    println!("{}", "=".repeat(40));
   }
 
   pub fn get_flag(&self, flag: Flags) -> u8 {
@@ -137,51 +134,51 @@ impl Cpu {
     let data = self.read(addr);
     self.reg.pc += 1;
     data
-
   }
 
   pub fn fetch16(&mut self, addr: u16) -> u16 {
     let lo = self.fetch(addr);
-    let hi = self.fetch(addr+1);
+    let hi = self.fetch(addr + 1);
     let data = ((hi as u16) << 8) | lo as u16;
     data
   }
 
-  pub fn decode(&mut self, instruction: u8) {
+  pub fn decode(&mut self, instruction: u8) -> Result<(), String> {
     match instruction {
       0x31 => {
         let data = self.fetch16(self.reg.pc);
         self.reg.sp = data;
-      },
+      }
       0xAF => {
         let result = self.reg.a ^ self.reg.a;
         self.reg.a = result;
 
         self.set_flag(Flags::Z, result == 0);
-      },
+      }
       0x21 => {
         let data = self.fetch16(self.reg.pc);
         self.reg.set_hl(data);
-
-      },
+      }
       0x32 => {
         let addr = self.reg.get_hl();
         let data = self.reg.a;
         self.write(addr, data);
 
         self.reg.set_hl(addr - 1);
-      },
-      _ => panic!("Unknow instruction. OPCODE: {:02X}", instruction)
+      }
+      _ => return Err(format!("Unknow instruction. OPCODE: {:02X}", instruction)),
     }
+
+    Ok(())
   }
 
-  pub fn step(&mut self) {
+  pub fn step(&mut self) -> Result<(), String> {
     self.debug();
 
     let instruction = self.fetch(self.reg.pc);
-    self.decode(instruction);
-
+    match self.decode(instruction) {
+      Err(e) => Err(format!("ERROR: {}", e)),
+      Ok(_) => Ok(()),
+    }
   }
-
-
 }
