@@ -4,10 +4,10 @@ use std::ptr::null_mut;
 use crate::bus::Bus;
 
 pub enum Flags {
-  Z,
-  N,
-  H,
-  C,
+  Z, // Zero flag
+  N, // Subtraction flag (BCD)
+  H, // Half Carry flag (BCD)
+  C, // Carry flag
 }
 
 #[derive(Default, Debug)]
@@ -68,6 +68,7 @@ impl Register {
 pub struct Cpu {
   pub reg: Register,
   bus: *mut Bus,
+  pub cycles: usize,
 }
 
 impl Cpu {
@@ -75,6 +76,7 @@ impl Cpu {
     Cpu {
       reg: Register::new(),
       bus: null_mut(),
+      cycles: 0,
     }
   }
 
@@ -110,6 +112,22 @@ impl Cpu {
     println!("{}", "=".repeat(40));
   }
 
+  pub fn view_memory_at(&self, memory: &[u8], address: usize, n: usize) {
+    // Garantimos que não tentaremos acessar fora do limite de memória
+    let end_address = (address + n).min(memory.len());
+
+    let next_n_bytes: Vec<String> = memory[address..end_address]
+      .iter() // Itera sobre a slice da memória
+      .map(|&v| format!("0x{:02x}", v)) // Converte cada byte para o formato hexadecimal
+      .collect(); // Coleta os resultados como uma `Vec<String>`
+
+    println!(
+      "0x{:04x}: {}",
+      address,
+      next_n_bytes.join(" ") // Junta os bytes em uma string separada por espaços
+    );
+  }
+
   pub fn get_flag(&self, flag: Flags) -> u8 {
     match flag {
       Flags::Z => (self.reg.f >> 7) & 0b1,
@@ -120,44 +138,60 @@ impl Cpu {
   }
 
   pub fn set_flag(&mut self, flag: Flags, conditional: bool) {
-    if conditional {
-      self.reg.f = match flag {
-        Flags::Z => self.reg.f | (1 << 7),
-        Flags::N => self.reg.f | (1 << 6),
-        Flags::H => self.reg.f | (1 << 5),
-        Flags::C => self.reg.f | (1 << 4),
-      };
-    }
+    let bit = match flag {
+        Flags::Z => 7,
+        Flags::N => 6,
+        Flags::H => 5,
+        Flags::C => 4,
+    };
+
+    self.reg.f = if conditional {
+        self.reg.f | (1 << bit)  // Seta o bit
+    } else {
+        self.reg.f & !(1 << bit) // Limpa o bit
+    };
+}
+
+  pub fn set_cycles(&mut self, instruction_cycle: usize) {
+    self.cycles = instruction_cycle;
   }
 
-  pub fn fetch(&mut self, addr: u16) -> u8 {
-    let data = self.read(addr);
+  pub fn fetch(&mut self) -> u8 {
+    let data = self.read(self.reg.pc);
     self.reg.pc += 1;
     data
   }
 
-  pub fn fetch16(&mut self, addr: u16) -> u16 {
-    let lo = self.fetch(addr);
-    let hi = self.fetch(addr + 1);
+  pub fn fetch16(&mut self) -> u16 {
+    let lo = self.read(self.reg.pc);
+    let hi = self.read(self.reg.pc + 1);
+    self.reg.pc += 2;
     let data = ((hi as u16) << 8) | lo as u16;
     data
   }
 
   pub fn decode(&mut self, instruction: u8) -> Result<(), String> {
     match instruction {
-      0x31 => {
-        let data = self.fetch16(self.reg.pc);
-        self.reg.sp = data;
+      0x00 => {
+        self.set_cycles(4);
       }
-      0xAF => {
-        let result = self.reg.a ^ self.reg.a;
-        self.reg.a = result;
-
-        self.set_flag(Flags::Z, result == 0);
+      0x20 => {
+        let data = self.fetch() as i8;
+        if self.get_flag(Flags::Z) == 1 {
+          self.reg.pc = self.reg.pc.wrapping_add(data as u16);
+          self.set_cycles(12);
+        }
+        self.set_cycles(8);
       }
       0x21 => {
-        let data = self.fetch16(self.reg.pc);
+        let data = self.fetch16();
         self.reg.set_hl(data);
+        self.set_cycles(12);
+      }
+      0x31 => {
+        let data = self.fetch16();
+        self.reg.sp = data;
+        self.set_cycles(12);
       }
       0x32 => {
         let addr = self.reg.get_hl();
@@ -165,6 +199,33 @@ impl Cpu {
         self.write(addr, data);
 
         self.reg.set_hl(addr - 1);
+        self.set_cycles(8);
+      }
+      0xAF => {
+        let result = self.reg.a ^ self.reg.a;
+        self.reg.a = result;
+
+        self.set_flag(Flags::Z, result == 0);
+        self.set_flag(Flags::N, false);
+        self.set_flag(Flags::H, false);
+        self.set_flag(Flags::C, false);
+        self.set_cycles(4);
+      }
+      0xCB => {
+        let cb_addr = self.fetch();
+
+        match cb_addr {
+          0x7C => {
+            let bit_7_h = (self.reg.h >> 7) & 0b1;
+
+            self.set_flag(Flags::Z, bit_7_h == 1);
+            self.set_flag(Flags::N, false);
+            self.set_flag(Flags::H, true); 
+            self.set_cycles(8);
+          }
+          _ => return Err(format!("Unknow CB instruction. OPCODE: {:02X}", instruction)),
+        }
+        println!("PREFIX CB: OPCODE: {:02X}", cb_addr);
       }
       _ => return Err(format!("Unknow instruction. OPCODE: {:02X}", instruction)),
     }
@@ -173,12 +234,12 @@ impl Cpu {
   }
 
   pub fn step(&mut self) -> Result<(), String> {
-    self.debug();
+    // self.debug();
 
-    let instruction = self.fetch(self.reg.pc);
+    let instruction = self.fetch();
     match self.decode(instruction) {
-      Err(e) => Err(format!("ERROR: {}", e)),
-      Ok(_) => Ok(()),
+      Err(e) => return Err(format!("ERROR: {}", e)),
+      Ok(_) => return Ok(()),
     }
   }
 }

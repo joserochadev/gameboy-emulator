@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
 use sdl2::ttf::{self, Sdl2TtfContext};
@@ -10,6 +11,7 @@ pub struct WinSDL {
   pub event_pump: EventPump,
   pub ttf_context: Sdl2TtfContext,
   pub canvas: Canvas<Window>,
+  pub window: Window,
 }
 
 impl WinSDL {
@@ -23,7 +25,7 @@ impl WinSDL {
       .build()
       .unwrap();
 
-    let canvas = window.into_canvas().build().unwrap();
+    let canvas = window.clone().into_canvas().build().unwrap();
     let event_pump: sdl2::EventPump = sdl.event_pump().unwrap();
 
     Ok(WinSDL {
@@ -31,6 +33,7 @@ impl WinSDL {
       event_pump,
       ttf_context,
       canvas,
+      window,
     })
   }
 
@@ -80,17 +83,96 @@ impl WinSDL {
   }
 
   pub fn draw_cpu_registers(&mut self, cpu: &Cpu, x: i32, y: i32) {
-    let row_space = 20;
+    let space = 20;
 
-    self.draw_text(&format!("A: {:02X}", cpu.reg.a), x, y + row_space * 0);
-    self.draw_text(&format!("B: {:02X}", cpu.reg.b), x, y + row_space * 1);
-    self.draw_text(&format!("C: {:02X}", cpu.reg.c), x, y + row_space * 2);
-    self.draw_text(&format!("D: {:02X}", cpu.reg.d), x, y + row_space * 3);
-    self.draw_text(&format!("E: {:02X}", cpu.reg.e), x, y + row_space * 4);
-    self.draw_text(&format!("F: {:02X}", cpu.reg.f), x, y + row_space * 5);
-    self.draw_text(&format!("H: {:02X}", cpu.reg.h), x, y + row_space * 6);
-    self.draw_text(&format!("L: {:02X}", cpu.reg.l), x, y + row_space * 7);
-    self.draw_text(&format!("SP: {:04X}", cpu.reg.sp), x, y + row_space * 8);
-    self.draw_text(&format!("PC: {:04X}", cpu.reg.pc), x, y + row_space * 9);
+    self.draw_text(&format!("A: {:02X}", cpu.reg.a), x, y + space * 0);
+    self.draw_text(&format!("B: {:02X}", cpu.reg.b), x, y + space * 1);
+    self.draw_text(&format!("C: {:02X}", cpu.reg.c), x, y + space * 2);
+    self.draw_text(&format!("D: {:02X}", cpu.reg.d), x, y + space * 3);
+    self.draw_text(&format!("E: {:02X}", cpu.reg.e), x, y + space * 4);
+    self.draw_text(&format!("F: {:02X}", cpu.reg.f), x, y + space * 5);
+    self.draw_text(&format!("H: {:02X}", cpu.reg.h), x, y + space * 6);
+    self.draw_text(&format!("L: {:02X}", cpu.reg.l), x, y + space * 7);
+    self.draw_text(&format!("SP: {:04X}", cpu.reg.sp), x, y + space * 8);
+    self.draw_text(&format!("PC: {:04X}", cpu.reg.pc), x, y + space * 9);
+
+    self.draw_text(
+      if cpu.get_flag(crate::cpu::Flags::Z) == 1 {
+        "Z"
+      } else {
+        "-"
+      },
+      x + 100 + space * 0,
+      y,
+    );
+    self.draw_text(
+      if cpu.get_flag(crate::cpu::Flags::N) == 1 {
+        "N"
+      } else {
+        "-"
+      },
+      x + 100 + space * 1,
+      y,
+    );
+    self.draw_text(
+      if cpu.get_flag(crate::cpu::Flags::H) == 1 {
+        "H"
+      } else {
+        "-"
+      },
+      x + 100 + space * 2,
+      y,
+    );
+    self.draw_text(
+      if cpu.get_flag(crate::cpu::Flags::C) == 1 {
+        "C"
+      } else {
+        "-"
+      },
+      x + 100 + space * 3,
+      y,
+    );
+  }
+
+  pub fn bytes_to_ascii(&self, bytes: &[u8]) -> String {
+    // Filtra os bytes para garantir que estejam no intervalo de caracteres ASCII imprimíveis
+    bytes[0..=255]
+      .iter()
+      .map(|&b| {
+        if b.is_ascii_graphic() || b.is_ascii_whitespace() {
+          b as char // Converte o byte para o caractere ASCII correspondente
+        } else {
+          '.' // Se não for um caractere imprimível, substitui por um ponto
+        }
+      })
+      .collect::<String>()
+  }
+
+  pub fn draw_ascii_grid(&mut self, bytes: &[u8], cols: usize, start_x: i32, start_y: i32) {
+    let ascii_string = self.bytes_to_ascii(bytes);
+
+    // Coleta os caracteres ASCII em um vetor que vive enquanto necessário
+    let chars: Vec<char> = ascii_string.chars().collect();
+
+    let y = start_y;
+    for (row_index, row) in chars.chunks(cols).enumerate() {
+      let row_str: String = row.iter().collect();
+      self.draw_text(&row_str, start_x, y + row_index as i32 * 18); // Atualiza a posição y com o índice da linha
+    }
   }
 }
+
+// let fps = fps_counter.get_fps();
+// let avg_frame_time = frame_counter.update();
+
+// debugger.canvas.set_draw_color(Color::RGB(0, 0, 0));
+// debugger.canvas.clear();
+
+// debugger.draw_cpu_registers(&cpu, 10, 10);
+// debugger.draw_memory_view(&bus.memory, 0x0000, 10, 300, 16, 15);
+// debugger.draw_memory_view(&bus.memory, cpu.reg.pc, 10, 230, 0, 6);
+
+// // debugger.draw_ascii_grid(&bus.memory, 10, 850, 300);
+
+// debugger.draw_text(&format!("fps:{} | {:.1}(ms)", fps, avg_frame_time), 640, 10);
+// debugger.canvas.present();
