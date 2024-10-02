@@ -139,21 +139,21 @@ impl Cpu {
 
   pub fn set_flag(&mut self, flag: Flags, conditional: bool) {
     let bit = match flag {
-        Flags::Z => 7,
-        Flags::N => 6,
-        Flags::H => 5,
-        Flags::C => 4,
+      Flags::Z => 7,
+      Flags::N => 6,
+      Flags::H => 5,
+      Flags::C => 4,
     };
 
     self.reg.f = if conditional {
-        self.reg.f | (1 << bit)  // Seta o bit
+      self.reg.f | (1 << bit) // Seta o bit
     } else {
-        self.reg.f & !(1 << bit) // Limpa o bit
+      self.reg.f & !(1 << bit) // Limpa o bit
     };
-}
+  }
 
-  pub fn set_cycles(&mut self, instruction_cycle: usize) {
-    self.cycles = instruction_cycle;
+  pub fn set_cycles(&mut self, t_cycles: usize) {
+    self.cycles = t_cycles;
   }
 
   pub fn fetch(&mut self) -> u8 {
@@ -174,6 +174,33 @@ impl Cpu {
     match instruction {
       0x00 => {
         self.set_cycles(4);
+      }
+      0x0C => {
+        let bit_3_before = (self.reg.c >> 3) & 0b1;
+        let result = self.reg.c.wrapping_add(1);
+        self.reg.c = result;
+        let bit_4_after = (self.reg.c >> 4) & 0b1;
+
+        self.set_flag(Flags::Z, result == 0);
+        self.set_flag(Flags::N, false);
+        self.set_flag(Flags::H, (bit_3_before == 1) && (bit_4_after == 1));
+        self.set_cycles(4);
+      }
+      0x0E => {
+        let data = self.fetch();
+        self.reg.c = data;
+        self.set_cycles(8);
+      }
+      0x11 => {
+        let data = self.fetch16();
+        self.reg.set_de(data);
+        self.set_cycles(12);
+      }
+      0x1A => {
+        let addr = self.reg.get_de();
+        let data = self.read(addr);
+        self.reg.a = data;
+        self.set_cycles(8);
       }
       0x20 => {
         let data = self.fetch() as i8;
@@ -201,6 +228,17 @@ impl Cpu {
         self.reg.set_hl(addr - 1);
         self.set_cycles(8);
       }
+      0x3E => {
+        let data = self.fetch();
+        self.reg.a = data;
+        self.set_cycles(8);
+      }
+      0x77 => {
+        let data = self.reg.a;
+        let addr = self.reg.get_hl();
+        self.write(addr, data);
+        self.set_cycles(8);
+      }
       0xAF => {
         let result = self.reg.a ^ self.reg.a;
         self.reg.a = result;
@@ -220,12 +258,27 @@ impl Cpu {
 
             self.set_flag(Flags::Z, bit_7_h == 1);
             self.set_flag(Flags::N, false);
-            self.set_flag(Flags::H, true); 
+            self.set_flag(Flags::H, true);
             self.set_cycles(8);
           }
           _ => return Err(format!("Unknow CB instruction. OPCODE: {:02X}", instruction)),
         }
         println!("PREFIX CB: OPCODE: {:02X}", cb_addr);
+      }
+      0xE0 => {
+        let hi = (0xFF << 8) as u16;
+        let lo = self.fetch() as u16;
+        let addr = hi | lo;
+        let data = self.reg.a;
+        self.write(addr, data);
+        self.set_cycles(12);
+      }
+      0xE2 => {
+        let hi = (0xFF << 8) as u16;
+        let lo = self.reg.c as u16;
+        let addr = hi | lo;
+        self.write(addr, self.reg.a);
+        self.set_cycles(8);
       }
       _ => return Err(format!("Unknow instruction. OPCODE: {:02X}", instruction)),
     }
