@@ -170,6 +170,28 @@ impl Cpu {
     data
   }
 
+  pub fn push(&mut self, data: u16) {
+    let hi = (data >> 8) & 0xFF;
+    let lo = data & 0xFF;
+
+    self.reg.sp = self.reg.sp.wrapping_sub(1);
+    self.write(self.reg.sp, hi as u8);
+
+    self.reg.sp = self.reg.sp.wrapping_sub(1);
+    self.write(self.reg.sp, lo as u8);
+  }
+
+  pub fn pop(&mut self) -> u16 {
+    self.reg.sp = self.reg.sp.wrapping_add(1);
+    let lo = self.read(self.reg.sp) as u16;
+
+    self.reg.sp = self.reg.sp.wrapping_add(1);
+    let hi = self.read(self.reg.sp) as u16;
+
+    let data = (hi << 8) | lo;
+    data
+  }
+
   pub fn decode(&mut self, instruction: u8) -> Result<(), String> {
     match instruction {
       0x00 => {
@@ -272,15 +294,14 @@ impl Cpu {
         self.set_flag(Flags::C, false);
         self.set_cycles(4);
       }
+      0xC1 => {
+        let data = self.pop();
+        self.reg.set_bc(data);
+        self.set_cycles(12);
+      }
       0xC5 => {
-        let b = self.reg.b;
-        let c = self.reg.c;
-
-        self.reg.sp = self.reg.sp.wrapping_sub(1);
-        self.write(self.reg.sp, b);
-        self.reg.sp = self.reg.sp.wrapping_sub(1);
-        self.write(self.reg.sp, c);
-
+        let data = self.reg.get_bc();
+        self.push(data);
         self.set_cycles(16);
       }
       0xCB => {
@@ -314,16 +335,8 @@ impl Cpu {
         println!("PREFIX CB: OPCODE: {:02X}", cb_intruction);
       }
       0xCD => {
-        let lo = self.fetch() as u16;
-        let hi = self.fetch() as u16;
-        let nn = (hi << 8) | lo;
-
-        self.reg.sp = self.reg.sp.wrapping_sub(1);
-        self.write(self.reg.sp, hi as u8);
-
-        self.reg.sp = self.reg.sp.wrapping_sub(1);
-        self.write(self.reg.sp, lo as u8);
-
+        let nn = self.fetch16();
+        self.push(nn);
         self.reg.pc = nn;
         self.set_cycles(24);
       }
