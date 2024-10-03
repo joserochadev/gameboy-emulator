@@ -175,6 +175,11 @@ impl Cpu {
       0x00 => {
         self.set_cycles(4);
       }
+      0x06 => {
+        let data = self.fetch();
+        self.reg.b = data;
+        self.set_cycles(8);
+      }
       0x0C => {
         let bit_3_before = (self.reg.c >> 3) & 0b1;
         let result = self.reg.c.wrapping_add(1);
@@ -195,6 +200,19 @@ impl Cpu {
         let data = self.fetch16();
         self.reg.set_de(data);
         self.set_cycles(12);
+      }
+      0x17 => {
+        let carry = self.get_flag(Flags::C);
+        let bit_7 = (self.reg.a >> 7) & 0b1;
+
+        self.reg.a = (self.reg.a << 1) | carry;
+
+        self.set_flag(Flags::Z, false);
+        self.set_flag(Flags::N, false);
+        self.set_flag(Flags::H, false);
+        self.set_flag(Flags::C, bit_7 == 1);
+
+        self.set_cycles(4);
       }
       0x1A => {
         let addr = self.reg.get_de();
@@ -233,6 +251,11 @@ impl Cpu {
         self.reg.a = data;
         self.set_cycles(8);
       }
+      0x4F => {
+        let data = self.reg.a;
+        self.reg.c = data;
+        self.set_cycles(4);
+      }
       0x77 => {
         let data = self.reg.a;
         let addr = self.reg.get_hl();
@@ -249,10 +272,35 @@ impl Cpu {
         self.set_flag(Flags::C, false);
         self.set_cycles(4);
       }
-      0xCB => {
-        let cb_addr = self.fetch();
+      0xC5 => {
+        let b = self.reg.b;
+        let c = self.reg.c;
 
-        match cb_addr {
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        self.write(self.reg.sp, b);
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        self.write(self.reg.sp, c);
+
+        self.set_cycles(16);
+      }
+      0xCB => {
+        let cb_intruction = self.fetch();
+
+        match cb_intruction {
+          0x11 => {
+            let carry = self.get_flag(Flags::C);
+            let bit_7 = (self.reg.c >> 7) & 0b1;
+
+            self.reg.c = (self.reg.c << 1) | carry;
+
+            self.set_flag(Flags::Z, self.reg.c == 0);
+            self.set_flag(Flags::N, false);
+            self.set_flag(Flags::H, false);
+            self.set_flag(Flags::C, bit_7 == 1);
+
+            self.set_cycles(8);
+
+          }
           0x7C => {
             let bit_7_h = (self.reg.h >> 7) & 0b1;
 
@@ -261,9 +309,23 @@ impl Cpu {
             self.set_flag(Flags::H, true);
             self.set_cycles(8);
           }
-          _ => return Err(format!("Unknow CB instruction. OPCODE: {:02X}", instruction)),
+          _ => return Err(format!("Unknow CB instruction. OPCODE: {:02X}", cb_intruction)),
         }
-        println!("PREFIX CB: OPCODE: {:02X}", cb_addr);
+        println!("PREFIX CB: OPCODE: {:02X}", cb_intruction);
+      }
+      0xCD => {
+        let lo = self.fetch() as u16;
+        let hi = self.fetch() as u16;
+        let nn = (hi << 8) | lo;
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        self.write(self.reg.sp, hi as u8);
+
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+        self.write(self.reg.sp, lo as u8);
+
+        self.reg.pc = nn;
+        self.set_cycles(24);
       }
       0xE0 => {
         let hi = (0xFF << 8) as u16;
