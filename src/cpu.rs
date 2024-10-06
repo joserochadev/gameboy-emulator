@@ -6,7 +6,7 @@ use crate::bus::Bus;
 pub enum Flags {
   Z, // Zero flag
   N, // Subtraction flag (BCD)
-  H, // Half Carry flag (BCD)
+  H, // Half Carry flag (BCD) HC = (((a & 0xF) + (b & 0xF)) & 0x10) == 0x10
   C, // Carry flag
 }
 
@@ -182,11 +182,11 @@ impl Cpu {
   }
 
   pub fn pop(&mut self) -> u16 {
-    self.reg.sp = self.reg.sp.wrapping_add(1);
     let lo = self.read(self.reg.sp) as u16;
-
     self.reg.sp = self.reg.sp.wrapping_add(1);
+
     let hi = self.read(self.reg.sp) as u16;
+    self.reg.sp = self.reg.sp.wrapping_add(1);
 
     let data = (hi << 8) | lo;
     data
@@ -197,20 +197,32 @@ impl Cpu {
       0x00 => {
         self.set_cycles(4);
       }
+      0x05 => {
+        let before = self.reg.b;
+        let result = self.reg.b.wrapping_sub(1);
+        self.reg.b = result;
+
+        let hc = (before & 0xF) < 1;
+
+        self.set_flag(Flags::Z, result == 0);
+        self.set_flag(Flags::N, true);
+        self.set_flag(Flags::H, hc);
+        self.set_cycles(4);
+      }
       0x06 => {
         let data = self.fetch();
         self.reg.b = data;
         self.set_cycles(8);
       }
       0x0C => {
-        let bit_3_before = (self.reg.c >> 3) & 0b1;
+        let before = self.reg.c;
         let result = self.reg.c.wrapping_add(1);
-        self.reg.c = result;
-        let bit_4_after = (self.reg.c >> 4) & 0b1;
+        self.reg.c = result; 
+        let hc = (before & 0xF) + (1 & 0xF);
 
         self.set_flag(Flags::Z, result == 0);
         self.set_flag(Flags::N, false);
-        self.set_flag(Flags::H, (bit_3_before == 1) && (bit_4_after == 1));
+        self.set_flag(Flags::H, hc > 0xF);
         self.set_cycles(4);
       }
       0x0E => {
@@ -254,6 +266,18 @@ impl Cpu {
         let data = self.fetch16();
         self.reg.set_hl(data);
         self.set_cycles(12);
+      }
+      0x22 => {
+        let data = self.reg.a;
+        let addr = self.reg.get_hl();
+        self.write(addr, data);
+        self.reg.set_hl(addr + 1);
+        self.set_cycles(8);
+      }
+      0x23 => {
+        let hl = self.reg.get_hl();
+        self.reg.set_hl(hl + 1);
+        self.set_cycles(8);
       }
       0x31 => {
         let data = self.fetch16();
@@ -304,6 +328,11 @@ impl Cpu {
         self.push(data);
         self.set_cycles(16);
       }
+      0xC9 => {
+        let addr = self.pop();
+        self.reg.pc = addr;
+        self.set_cycles(16);
+      }
       0xCB => {
         let cb_intruction = self.fetch();
 
@@ -336,7 +365,7 @@ impl Cpu {
       }
       0xCD => {
         let nn = self.fetch16();
-        self.push(nn);
+        self.push(self.reg.pc);
         self.reg.pc = nn;
         self.set_cycles(24);
       }
