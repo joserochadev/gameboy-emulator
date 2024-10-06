@@ -235,6 +235,11 @@ impl Cpu {
         self.reg.set_de(data);
         self.set_cycles(12);
       }
+      0x13 => {
+        let de = self.reg.get_de();
+        self.reg.set_de(de + 1);
+        self.set_cycles(8);
+      }
       0x17 => {
         let carry = self.get_flag(Flags::C);
         let bit_7 = (self.reg.a >> 7) & 0b1;
@@ -307,6 +312,11 @@ impl Cpu {
         let addr = self.reg.get_hl();
         self.write(addr, data);
         self.set_cycles(8);
+      }
+      0x7B => {
+        let e = self.reg.e;
+        self.reg.a = e;
+        self.set_cycles(4);
       }
       0xAF => {
         let result = self.reg.a ^ self.reg.a;
@@ -383,6 +393,20 @@ impl Cpu {
         let addr = hi | lo;
         self.write(addr, self.reg.a);
         self.set_cycles(8);
+      }
+      0xFE => {
+        let before = self.reg.a;
+        let n = self.fetch();
+        let a = self.reg.a;
+        let result = a - n;
+        let hc = (before & 0xF) < 1;
+        let bit_7 = (result >> 7) & 0b1;
+
+        self.set_flag(Flags::Z, result == 0);
+        self.set_flag(Flags::N, true);
+        self.set_flag(Flags::H, hc);
+        self.set_flag(Flags::C, bit_7 == 1);
+
       }
       _ => return Err(format!("Unknow instruction. OPCODE: {:02X}", instruction)),
     }
