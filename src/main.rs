@@ -18,10 +18,12 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use win_sdl::WinSDL;
 
+use log;
+
 fn main() {
   if env::args().len() < 2 {
-    println!("Error: rom not found.");
-    println!("Usage: cargo run <ROM_PATH>");
+    log::error!("Error: rom not found.");
+    log::info!("Usage: cargo run <ROM_PATH>");
   }
 
   let rom_path = env::args().nth(1).unwrap();
@@ -58,6 +60,9 @@ fn main() {
   cpu.debug();
   cpu.view_memory_at(&bus.memory, cpu.reg.pc as usize, 8);
 
+  // enable logger
+  env_logger::init();
+
   'running: loop {
     let fps = fps_counter.get_fps();
     let avg_frame_time = frame_counter.update();
@@ -86,7 +91,7 @@ fn main() {
 
             if step_error == 0 {
               if let Err(e) = cpu_step {
-                eprintln!("{}", e);
+                log::error!("{}", e);
                 step_error = -1
               }
             }

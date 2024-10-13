@@ -3,6 +3,8 @@ use std::ptr::null_mut;
 
 use crate::bus::Bus;
 
+use log;
+
 pub enum Flags {
   Z, // Zero flag
   N, // Subtraction flag (BCD)
@@ -371,7 +373,7 @@ impl Cpu {
           }
           _ => return Err(format!("Unknow CB instruction. OPCODE: {:02X}", cb_intruction)),
         }
-        println!("PREFIX CB: OPCODE: {:02X}", cb_intruction);
+        log::error!("PREFIX CB: OPCODE: {:02X}", cb_intruction);
       }
       0xCD => {
         let nn = self.fetch16();
@@ -398,7 +400,7 @@ impl Cpu {
         let before = self.reg.a;
         let n = self.fetch();
         let a = self.reg.a;
-        let result = a - n;
+        let result = a.wrapping_sub(n);
         let hc = (before & 0xF) < 1;
         let bit_7 = (result >> 7) & 0b1;
 
